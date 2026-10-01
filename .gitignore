@@ -1,0 +1,19 @@
+# Секреты — НИКОГДА не коммитим
+.env
+
+# Бинарники
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Покрытие тестов
+coverage.out
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
