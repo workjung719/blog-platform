@@ -40,22 +40,24 @@ func main() {
 	defer db.Close()
 	logger.Info("database_connected")
 
-	// Автоматические миграции при старте (SQL встроен через go:embed).
 	if err := migrations.Apply(db); err != nil {
 		logger.Error("migration_failed", "error", err)
 		os.Exit(1)
 	}
 	logger.Info("migrations_applied")
 
-	// Слои: Repository -> Service -> Handler.
+	// Repositories
 	userRepo := repository.NewUserRepo(db)
 	postRepo := repository.NewPostRepo(db)
 	commentRepo := repository.NewCommentRepo(db)
 
+	// Services
 	userService := service.NewUserService(userRepo, cfg.JWT)
 	postService := service.NewPostService(postRepo)
-	commentService := service.NewCommentService(commentRepo, postRepo)
+	// Передаем userRepo в CommentService для будущей проверки прав (если понадобится)
+	commentService := service.NewCommentService(commentRepo, postRepo, userRepo)
 
+	// Handlers
 	userHandler := handler.NewUserHandler(userService, logger)
 	postHandler := handler.NewPostHandler(postService, logger)
 	commentHandler := handler.NewCommentHandler(commentService, logger)
@@ -65,24 +67,27 @@ func main() {
 	r.Use(middleware.LoggerMiddleware(logger))
 	r.Use(middleware.RecoverMiddleware(logger))
 
-	// Публичные маршруты (маршрутизация по HTTP-методам обеспечивается chi).
+	// Public Routes
 	r.Get("/api/health", healthHandler.Check)
 	r.Post("/api/register", userHandler.Register)
 	r.Post("/api/login", userHandler.Login)
 	r.Get("/api/posts", postHandler.List)
 	r.Get("/api/posts/{id}", postHandler.GetByID)
+	r.Get("/api/users/{userId}/posts", postHandler.GetByAuthor)
 	r.Get("/api/posts/{postId}/comments", commentHandler.ListByPost)
 
-	// Защищённые маршруты (JWT-middleware).
+	// Protected Routes
 	r.Group(func(pr chi.Router) {
 		pr.Use(middleware.AuthMiddleware(userService))
 		pr.Post("/api/posts", postHandler.Create)
 		pr.Put("/api/posts/{id}", postHandler.Update)
 		pr.Delete("/api/posts/{id}", postHandler.Delete)
+
 		pr.Post("/api/posts/{postId}/comments", commentHandler.Create)
+		pr.Put("/api/comments/{commentId}", commentHandler.Update)
+		pr.Delete("/api/comments/{commentId}", commentHandler.Delete)
 	})
 
-	// Фоновый планировщик отложенных публикаций с graceful shutdown.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	publisher := scheduler.NewPublisher(postService, cfg.Sched.IntervalSec, cfg.Sched.Workers, logger)
@@ -104,13 +109,12 @@ func main() {
 		}
 	}()
 
-	// Graceful shutdown: останавливаем планировщик и HTTP-сервер.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	logger.Info("shutdown_signal_received")
 
-	cancel() // сигнал планировщику завершиться
+	cancel()
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()

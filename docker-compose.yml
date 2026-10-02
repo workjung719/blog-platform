@@ -1,20 +1,43 @@
+version: "3.8"
+
 services:
-  postgres:
+  db:
     image: postgres:15-alpine
-    container_name: blog_db
+    container_name: blog_postgres_db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: blog_platform
+      POSTGRES_DB: blog_db
     ports:
       - "5436:5432"
     volumes:
-      - blog_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 5
 
+  app:
+    build: .
+    container_name: blog_api
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: blog_db
+      DB_SSLMODE: disable
+      JWT_SECRET: your-secret-key-change-in-production-minimum-32-characters-length-here
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      SCHEDULER_INTERVAL_SEC: 5
+      SCHEDULER_WORKERS: 3
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
-  blog_data:
+  postgres_data:

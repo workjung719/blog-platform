@@ -96,3 +96,21 @@ func (s *PostService) Publish(ctx context.Context, id int) error {
 
 // ensure interface satisfaction at compile time (защита от рассинхрона контракта).
 var _ = errors.Is
+
+func (s *PostService) GetByAuthor(ctx context.Context, authorID, limit, offset int) (model.PaginatedResponse, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	posts, total, err := s.repo.GetByAuthorID(ctx, authorID, limit, offset)
+	if err != nil {
+		return model.PaginatedResponse{}, err
+	}
+	return model.PaginatedResponse{Items: posts, Total: total, Limit: limit, Offset: offset}, nil
+}

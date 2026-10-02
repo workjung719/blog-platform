@@ -64,3 +64,47 @@ func (h *CommentHandler) ListByPost(w http.ResponseWriter, r *http.Request) {
 	}
 	respond.JSON(w, http.StatusOK, comments)
 }
+
+func (h *CommentHandler) Update(w http.ResponseWriter, r *http.Request) {
+	uid, ok := middleware.GetUserID(r)
+	if !ok {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id, err := strconv.Atoi(chi.URLParam(r, "commentId"))
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "invalid comment id")
+		return
+	}
+	var req model.UpdateCommentRequest
+	if err := respond.ParseJSON(r, &req); err != nil {
+		respond.Error(w, http.StatusBadRequest, "invalid JSON payload")
+		return
+	}
+	comment, err := h.comments.Update(r.Context(), id, uid, req)
+	if err != nil {
+		status, msg := respond.MapError(err, h.logger)
+		respond.Error(w, status, msg)
+		return
+	}
+	respond.JSON(w, http.StatusOK, comment)
+}
+
+func (h *CommentHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	uid, ok := middleware.GetUserID(r)
+	if !ok {
+		respond.Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	id, err := strconv.Atoi(chi.URLParam(r, "commentId"))
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "invalid comment id")
+		return
+	}
+	if err := h.comments.Delete(r.Context(), id, uid); err != nil {
+		status, msg := respond.MapError(err, h.logger)
+		respond.Error(w, status, msg)
+		return
+	}
+	respond.JSON(w, http.StatusOK, map[string]string{"message": "comment deleted"})
+}

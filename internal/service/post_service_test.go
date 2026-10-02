@@ -11,13 +11,15 @@ import (
 )
 
 // mockPostRepo — мок репозитория постов для изолированных unit-тестов сервиса.
+// mockPostRepo — мок репозитория постов для изолированных unit-тестов сервиса.
 type mockPostRepo struct {
-	created       *model.Post
-	anyByID       *model.Post
-	anyErr        error
-	updatedCalled bool
-	deletedCalled bool
-	updateErr     error
+	created           *model.Post
+	anyByID           *model.Post
+	anyErr            error
+	updatedCalled     bool
+	deletedCalled     bool
+	updateErr         error
+	getByAuthorCalled bool
 }
 
 func (m *mockPostRepo) Create(_ context.Context, post *model.Post) (*model.Post, error) {
@@ -26,8 +28,10 @@ func (m *mockPostRepo) Create(_ context.Context, post *model.Post) (*model.Post,
 	out.ID = 1
 	return &out, nil
 }
-func (m *mockPostRepo) GetByID(context.Context, int) (*model.Post, error)        { return nil, nil }
-func (m *mockPostRepo) GetByIDAny(context.Context, int) (*model.Post, error)     { return m.anyByID, m.anyErr }
+func (m *mockPostRepo) GetByID(context.Context, int) (*model.Post, error) { return nil, nil }
+func (m *mockPostRepo) GetByIDAny(context.Context, int) (*model.Post, error) {
+	return m.anyByID, m.anyErr
+}
 func (m *mockPostRepo) GetAll(_ context.Context, limit, offset int) ([]model.Post, int, error) {
 	return []model.Post{}, 0, nil
 }
@@ -41,6 +45,12 @@ func (m *mockPostRepo) Delete(context.Context, int) error {
 }
 func (m *mockPostRepo) GetDuePosts(context.Context, int) ([]model.Post, error) { return nil, nil }
 func (m *mockPostRepo) Publish(context.Context, int) error                     { return nil }
+func (m *mockPostRepo) GetByAuthorID(ctx context.Context, authorID, limit, offset int) ([]model.Post, int, error) {
+	m.getByAuthorCalled = true
+	// Возвращаем пустой список и 0 total, так как в текущих тестах это не критично,
+	// но важно, чтобы сигнатура совпадала с интерфейсом.
+	return []model.Post{}, 0, nil
+}
 
 var _ repository.PostRepository = (*mockPostRepo)(nil)
 
@@ -50,9 +60,9 @@ func TestPostService_Create_Status(t *testing.T) {
 	past := time.Now().Add(-1 * time.Hour)
 
 	tests := []struct {
-		name        string
-		publishAt   *time.Time
-		wantStatus  string
+		name       string
+		publishAt  *time.Time
+		wantStatus string
 	}{
 		{"без publish_at -> published", nil, "published"},
 		{"publish_at в прошлом -> published", &past, "published"},

@@ -106,3 +106,20 @@ func (r *PostRepo) Publish(ctx context.Context, id int) error {
 	}
 	return nil
 }
+
+func (r *PostRepo) GetByAuthorID(ctx context.Context, authorID, limit, offset int) ([]model.Post, int, error) {
+	var total int
+	countQuery := `SELECT COUNT(*) FROM posts WHERE user_id = $1 AND status = 'published'`
+	if err := r.db.GetContext(ctx, &total, countQuery, authorID); err != nil {
+		return nil, 0, fmt.Errorf("count posts by author: %w", err)
+	}
+
+	const q = `SELECT ` + postCols + ` FROM posts 
+	           WHERE user_id = $1 AND status = 'published' 
+	           ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+	posts := []model.Post{}
+	if err := r.db.SelectContext(ctx, &posts, q, authorID, limit, offset); err != nil {
+		return nil, 0, fmt.Errorf("list posts by author: %w", err)
+	}
+	return posts, total, nil
+}

@@ -112,3 +112,21 @@ func (h *PostHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	respond.JSON(w, http.StatusOK, map[string]string{"message": "post deleted"})
 }
+
+func (h *PostHandler) GetByAuthor(w http.ResponseWriter, r *http.Request) {
+	authorID, err := strconv.Atoi(chi.URLParam(r, "userId"))
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+	resp, err := h.posts.GetByAuthor(r.Context(), authorID, limit, offset)
+	if err != nil {
+		status, msg := respond.MapError(err, h.logger)
+		respond.Error(w, status, msg)
+		return
+	}
+	respond.JSON(w, http.StatusOK, resp)
+}

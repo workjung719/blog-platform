@@ -19,6 +19,7 @@ cd blog-platform
 ```
 
 2. Запустите базу данных PostgreSQL:**
+  
 
 ```bash
 docker-compose up -d
@@ -44,7 +45,6 @@ go run cmd/api/main.go
 ```
 
 Сервер запустится на `http://localhost:8080`. При старте автоматически применяются миграции БД и запускается фоновый планировщик публикаций.
-
 
 ## Архитектура
 
@@ -79,6 +79,7 @@ migrations/ # SQL скрипты миграций (встроены через g
 
 ### Публичные эндпоинты
 
+
 | Метод | Путь | Описание |
 | --- | --- | --- |
 | GET | `/api/health` | Проверка состояния сервиса и подключения к БД |
@@ -86,9 +87,11 @@ migrations/ # SQL скрипты миграций (встроены через g
 | POST | `/api/login` | Авторизация, возвращает JWT токен |
 | GET | `/api/posts` | Список опубликованных постов (пагинация: `?limit=10&offset=0`) |
 | GET | `/api/posts/{id}` | Получить конкретный пост |
+| GET | `/api/users/{userId}/posts` | Получить все посты конкретного автора |
 | GET | `/api/posts/{postId}/comments` | Получить комментарии к посту |
 
 ### Защищенные эндпоинты (требуется Header: `Authorization: Bearer <token>`)
+
 
 | Метод | Путь | Описание | Права |
 | --- | --- | --- | --- |
@@ -96,7 +99,8 @@ migrations/ # SQL скрипты миграций (встроены через g
 | PUT | `/api/posts/{id}` | Обновить пост | Только автор поста (иначе 403 Forbidden) |
 | DELETE | `/api/posts/{id}` | Удалить пост | Только автор поста (иначе 403 Forbidden) |
 | POST | `/api/posts/{postId}/comments` | Добавить комментарий | Любой авторизованный |
-
+| PUT | `/api/comments/{commentId}` |  Обновить комментарий | Только автор комментария (иначе 403) |
+| DELETE | `/api/comments/{commentId}` |  Удалить комментарий | Только автор комментария (иначе 403) |
 
 ## Планировщик отложенных публикаций
 
@@ -137,6 +141,162 @@ go test -coverprofile=coverage.out ./...
 go tool cover -html=coverage.out
 ```
 
+## Примеры запросов (Curl)
+
+Ниже приведены рабочие примеры взаимодействия с API. 
+**Важно:** Перед выполнением защищенных запросов необходимо получить JWT токен через `/api/login`.
+
+### 1. Проверка здоровья сервиса (Health Check)
+
+```bash
+curl http://localhost:8080/api/health
+```
+
+*Ожидаемый ответ: `{"data":{"status":"ok"}}`*
+
+### 2. Регистрация пользователя
+
+```bash
+curl -X POST http://localhost:8080/api/register \
+-H "Content-Type: application/json" \
+-d '{
+    "email": "test@example.com",
+    "username": "testuser",
+    "password": "SecurePass123!"
+}'
+```
+
+*Ответ: `201 Created`, содержит поле `"token"`.*
+
+### 3. Вход (Получение токена)
+
+```bash
+curl -X POST http://localhost:8080/api/login \
+-H "Content-Type: application/json" \
+-d '{
+    "email": "test@example.com",
+    "password": "SecurePass123!"
+}'
+```
+
+*Cохраните значение поля `"token"` из ответа для дальнейших шагов.*
+
+### 4. Создание поста (Обычный / Published)
+
+```bash
+curl -X POST http://localhost:8080/api/posts \
+-H "Content-Type: application/json" \
+-H "Authorization: Bearer <YOUR_TOKEN>" \
+-d '{
+    "title": "Мой первый пост",
+    "content": "Привет, мир Go!"
+}'
+```
+
+*Статус созданного поста будет `published`.*
+
+### 5. Создание отложенного поста (Draft)
+
+```bash
+# Указываем время публикации в будущем (ISO 8601)
+curl -X POST http://localhost:8080/api/posts \
+-H "Content-Type: application/json" \
+-H "Authorization: Bearer <YOUR_TOKEN>" \
+-d '{
+    "title": "Завтрашний пост",
+    "content": "Этот текст появится автоматически завтра.",
+    "publish_at": "2026-10-03T12:00:00Z"
+}'
+```
+
+*Статус созданного поста будет `draft`. Планировщик опубликует его по наступлении времени.*
+
+### 6. Получение списка постов (Пагинация)
+
+```bash
+curl "http://localhost:8080/api/posts?limit=10&offset=0"
+```
+
+*Возвращает только опубликованные посты.*
+
+### 7. Получение конкретного поста по ID
+
+*(Замените `1` на ID существующего поста)*
+
+```bash
+curl -X PUT http://localhost:8080/api/posts/1 \
+-H "Content-Type: application/json" \
+-H "Authorization: Bearer <YOUR_TOKEN>" \
+-d '{
+    "title": "Обновленный заголовок",
+    "content": "Новый контент поста."
+}'
+```
+
+### 8. Обновление поста (Только автор)
+
+*(Замените `1` на ID вашего поста)*
+
+```bash
+curl -X PUT http://localhost:8080/api/posts/1 \
+-H "Content-Type: application/json" \
+-H "Authorization: Bearer <YOUR_TOKEN>" \
+-d '{
+    "title": "Обновленный заголовок",
+    "content": "Новый контент поста."
+}'
+```
+
+###
+
+### 9. Удаление поста (Только автор)
+
+```bash
+curl -X DELETE http://localhost:8080/api/posts/1 \
+-H "Authorization: Bearer <YOUR_TOKEN>"
+```
+
+*Ответ: `200 OK` или `204 No Content`.*
+
+### 10. Получение постов конкретного автора
+
+*(Замените `1` на ID пользователя)*
+
+```bash
+curl http://localhost:8080/api/users/1/posts
+```
+
+### 11. Добавление комментария к посту
+
+*(Замените `postId` на ID существующего поста)*
+
+```bash
+curl -X POST http://localhost:8080/api/posts/1/comments \
+-H "Content-Type: application/json" \
+-H "Authorization: Bearer <YOUR_TOKEN>" \
+-d '{
+    "content": "Отличная статья!"
+}'
+```
+
+### 12. Получение комментариев к посту
+
+```bash
+curl http://localhost:8080/api/posts/1/comments
+```
+
+### 13. Обновление комментария (Только автор комментария)
+
+*(Замените `commentId` на ID комментария)*
+
+```bash
+curl -X PUT http://localhost:8080/api/comments/1 \
+-H "Content-Type: application/json" \
+-H "Authorization: Bearer <YOUR_TOKEN>" \
+-d '{
+    "content": "Исправленный комментарий"
+}'
+```
 
 ## Технологии
 
